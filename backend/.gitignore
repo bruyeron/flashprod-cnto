@@ -1,0 +1,14 @@
+# Environnement Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Variables sensibles
+.env
+
+# Données persistantes
+data/users.json
+data/production.csv
