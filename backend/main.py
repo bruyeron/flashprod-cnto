@@ -11,7 +11,7 @@ from routers import auth, csv
 
 app = FastAPI(
     title="Flash Production API",
-    description="Backend de l'application Flash Production",
+    description="Backend de l'application flashprod",
     version="1.0.0",
 )
 
