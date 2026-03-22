@@ -48,7 +48,7 @@ export default function TopBar({ dark, onToggleTheme, allGroups, selectedGroup, 
             <div className={`text-[12px] ${muted} mr-2 flex items-center gap-1`}>
               <CircleUserRound size={18} />
               <span>{user.username}</span>
-              {isAdmin && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-semibold">Admin</span>}
+              {isAdmin && <span className="text-[10px] bg-[#00afa9]/20 text-[#00afa9] px-1.5 py-0.5 rounded-full font-semibold">Admin</span>}
             </div>
           )}
 
@@ -57,9 +57,9 @@ export default function TopBar({ dark, onToggleTheme, allGroups, selectedGroup, 
             <button
               onClick={() => setShowAdmin(true)}
               title="Gestion des comptes"
-              className={`w-9 h-9 rounded-lg border cursor-pointer flex items-center justify-center transition-all ${dark ? "bg-[#21262d] border-[#30363d] hover:border-purple-500 hover:bg-purple-900/40" : "bg-slate-100 border-slate-200 hover:border-purple-400 hover:bg-purple-50"}`}
+              className={`w-9 h-9 rounded-lg border cursor-pointer flex items-center justify-center transition-all ${dark ? "bg-[#21262d] border-[#30363d] hover:border-[#00afa9] hover:bg-[#00afa9]/20" : "bg-slate-100 border-slate-200 hover:border-[#00afa9] hover:bg-[#00afa9]/20"}`}
             >
-              <ShieldCheck size={16} strokeWidth={2.5} className="text-purple-500" />
+              <ShieldCheck size={16} strokeWidth={2.5} className="text-[#00afa9]" />
             </button>
           )}
 
