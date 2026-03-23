@@ -67,7 +67,7 @@ export default function Login() {
                 onChange={e => setUsername(e.target.value)}
                 required
                 className={inputClass}
-                placeholder="ex: jean.dupont"
+                placeholder="ex: soava.bogosy"
               />
             </div>
 

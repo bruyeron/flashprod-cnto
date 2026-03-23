@@ -256,7 +256,7 @@ export const ROW_DEFS = [
     fmt: "decimal2",
   },
   {
-    type: "sub", label: "ETP Absents", code: "etp_abs",
+    type: "sub", label: "ETP Absents (équivalence en ETP des heures d'absence)", code: "etp_abs",
     formula: (d) => {
       const hl = hLog(d);
       const p = v(d, "prev", "planning2");
@@ -264,6 +264,20 @@ export const ROW_DEFS = [
       const etpPresent =  hl ? (hl / 3600) / 8 : null;
       if (!etpPresent || !etpPlan) return null;
       return etpPlan - etpPresent  ;
+    },
+    fmt: "decimal2",
+  },
+  {
+    type: "sub", label: "Absence réelle", code: "abs_reel",
+    formula: (d) => {
+      "à remplir manuellement"
+    },
+    fmt: "decimal2",
+  },
+  {
+    type: "sub", label: "Non logués", code: "non_logue",
+    formula: (d) => {
+      "à remplir manuellement"
     },
     fmt: "decimal2",
   },
