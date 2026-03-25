@@ -178,7 +178,7 @@ export default function WeeklyCompletionModal({ dark, sortedWeeks, onClose }) {
                                   refs.current[week].non_logue[i] = el;
                                 }}
                                 type="number"
-                                step="0.1"
+                                step="1"
                                 min="0"
                                 defaultValue={val !== null && val !== undefined ? val : ''}
                                 placeholder="—"

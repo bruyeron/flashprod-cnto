@@ -432,36 +432,36 @@ export const ROW_DEFS = [
   {
     type: "kpi", label: "Chiffre d'affaires", code: "ca",
     formula: (d) => {
-      const recu = v(d, "incoming", "recu");
+      const traite = v(d, "incoming", "traite");
       // CA = appels reçus × tarif (0.3 par appel - from Excel row 131 col D = 0.3)
-      return recu ? recu * 0.3 : null;
+      return traite ? traite * 0.3 : null;
     },
     fmt: "decimal2",
   },
   {
     type: "kpi", label: "CA / Heures planifiées", code: "ca_hp",
     formula: (d) => {
-      const recu = v(d, "incoming", "recu");
+      const traite = v(d, "incoming", "traite");
       const plan = v(d, "prev", "planning2");
-      return recu && plan ? (recu * 0.3) / plan : null;
+      return traite && plan ? (traite * 0.3) / plan : null;
     },
     fmt: "decimal2", refMin: 4.32, colorMode: "min",
   },
   {
     type: "kpi", label: "CA / Heures loguées", code: "ca_hl",
     formula: (d) => {
-      const recu = v(d, "incoming", "recu");
+      const traite = v(d, "incoming", "traite");
       const hl = hLog(d);
-      return recu && hl ? (recu * 0.3) / (hl / 3600) : null;
+      return traite && hl ? (traite * 0.3) / (hl / 3600) : null;
     },
     fmt: "decimal2", refMin: 6, colorMode: "min",
   },
   {
     type: "kpi", label: "CA / ETP Planifiés", code: "ca_etp",
     formula: (d) => {
-      const recu = v(d, "incoming", "recu");
+      const traite = v(d, "incoming", "traite");
       const plan = v(d, "prev", "planning2");
-      return recu && plan ? (recu * 0.3) / (plan / 8) : null;
+      return traite && plan ? (traite * 0.3) / (plan / 8) : null;
     },
     fmt: "decimal2",
   },
