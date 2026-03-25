@@ -105,7 +105,7 @@ export default function CellCommentPopover({ cellKey, dark, author, onClose, anc
         )}
       </div>
 
-      {/* Saisie — input non contrôlé, pas de value= ni onChange= */}
+      {/* Saisie — input non contrôlé */}
       <div className={`px-3 py-2 border-t ${dark ? 'border-[#30363d]' : 'border-slate-100'}`}>
         <div className="flex gap-1.5">
           <input

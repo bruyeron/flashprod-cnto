@@ -141,7 +141,7 @@ export default function WeeklyCompletionModal({ dark, sortedWeeks, onClose }) {
                                   refs.current[week].abs_reel[i] = el;
                                 }}
                                 type="number"
-                                step="0.01"
+                                step="1"
                                 min="0"
                                 defaultValue={val !== null && val !== undefined ? val : ''}
                                 placeholder="—"
@@ -178,7 +178,7 @@ export default function WeeklyCompletionModal({ dark, sortedWeeks, onClose }) {
                                   refs.current[week].non_logue[i] = el;
                                 }}
                                 type="number"
-                                step="0.01"
+                                step="0.1"
                                 min="0"
                                 defaultValue={val !== null && val !== undefined ? val : ''}
                                 placeholder="—"
@@ -206,7 +206,7 @@ export default function WeeklyCompletionModal({ dark, sortedWeeks, onClose }) {
         {/* Footer */}
         <div className={`px-6 py-4 border-t flex items-center justify-between flex-shrink-0 ${dark ? 'border-[#30363d]' : 'border-slate-200'}`}>
           <p className={`text-[11px] ${dark ? 'text-slate-600' : 'text-slate-400'}`}>
-            Valeurs stockées localement · Int ou décimal accepté (ex : 1, 0.5, 2.25)
+            Valeurs mbola stockées localement · Int sy décimal accepté (ex : 1, 0.5, 2.25)
           </p>
           <button
             ref={saved_ref}

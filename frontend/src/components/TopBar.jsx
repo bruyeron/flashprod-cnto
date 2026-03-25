@@ -85,7 +85,7 @@ export default function TopBar({
             </button>
           )}
 
-          {/* [2] Bouton Complétion hebdomadaire — visible pour TOUS */}
+          {/* Bouton Complétion hebdomadaire — visible pour TOUS */}
           <button
             onClick={() => setShowCompletion(true)}
             title="Complétion hebdomadaire — Absence réelle & Non logués"
@@ -99,7 +99,7 @@ export default function TopBar({
             {dark ? <Sun size={18} strokeWidth={2.5} /> : <Moon size={18} strokeWidth={2.5} />}
           </button>
 
-          {/* [3] Bouton Charger CSV — ADMIN UNIQUEMENT */}
+          {/* Bouton Charger CSV — ADMIN UNIQUEMENT */}
           {isAdmin && (
             <>
               <button

@@ -1,14 +1,3 @@
-/**
- * src/context/CommentContext.jsx
- *
- * [NOUVEAU v8] Contexte global pour les commentaires de cellules.
- *
- * Stockage : localStorage sous la clé "fp_comments"
- * Structure : { [cellKey]: [ { id, author, text, date }, ... ] }
- * cellKey = "rowCode::colKey"  ex: "abs_reel::sem-12::2026-03-20"
- *
- * Accessible via useComments()
- */
 import { createContext, useContext, useState, useCallback } from 'react';
 
 const CommentContext = createContext(null);
