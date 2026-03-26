@@ -1,9 +1,12 @@
 /**
  * src/App.jsx
  *
- * DIFFÉRENCES v8 vs v6 :
- *  [1] sortedWeeks extrait depuis dataIdx et transmis à TopBar
- *      pour alimenter le WeeklyCompletionModal
+ * DIFFÉRENCES v11 vs v10 :
+ *  [v11-1] selectedGroup transmis à DataTable et à TopBar (→ WeeklyCompletionModal)
+ *          pour que commentaires et valeurs manuelles soient isolés par activité.
+ *
+ * Inchangé depuis v8 :
+ *  sortedWeeks extrait depuis dataIdx et transmis à TopBar → WeeklyCompletionModal
  */
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
@@ -102,7 +105,6 @@ export default function App() {
 
   const bg = dark ? 'bg-[#0d1117] text-slate-200' : 'bg-[#f5f7fa] text-slate-800';
 
-  // [1] Extraire sortedWeeks depuis dataIdx pour la modal de complétion
   const sortedWeeks = dataIdx?.sortedDates
     ? [...new Set(dataIdx.sortedDates.map(d => dataIdx.dateWeek[d]))]
     : [];
@@ -117,12 +119,23 @@ export default function App() {
         onGroupChange={handleGroupChange}
         statusMsg={statusMsg}
         onFileLoad={handleFileLoad}
-        sortedWeeks={sortedWeeks}  // [1] Nouveau prop v8
+        sortedWeeks={sortedWeeks}
+        // [v11-1] Activité courante transmise pour isoler commentaires et valeurs manuelles
+        currentActivity={selectedGroup}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         {!dataIdx
           ? <EmptyState dark={dark} />
-          : <DataTable dataIdx={dataIdx} collapseState={collapseState} onToggle={handleToggle} dark={dark} />
+          : (
+            // [v11-1] currentActivity transmis à DataTable
+            <DataTable
+              dataIdx={dataIdx}
+              collapseState={collapseState}
+              onToggle={handleToggle}
+              dark={dark}
+              currentActivity={selectedGroup}
+            />
+          )
         }
       </div>
       {dataIdx && <Legend dark={dark} />}

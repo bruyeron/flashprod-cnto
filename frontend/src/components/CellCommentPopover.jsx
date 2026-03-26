@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useComments } from '../context/CommentContext';
-import { X, Send, Trash2, MessageSquare } from 'lucide-react';
+import { X, Send, MessageSquare } from 'lucide-react';
 
 function fmtDate(iso) {
   const d = new Date(iso);
@@ -9,19 +9,24 @@ function fmtDate(iso) {
 }
 
 export default function CellCommentPopover({ cellKey, dark, author, onClose, anchorRect }) {
-  const { getComments, addComment, deleteComment } = useComments();
+  // deleteComment retiré — suppression désactivée
+  const { getComments, addComment } = useComments();
+  // inputRef non contrôlé — aucun état local pour le texte saisi
   const inputRef = useRef(null);
   const popRef   = useRef(null);
   const comments = getComments(cellKey);
 
+  // Focus auto
   useEffect(() => { inputRef.current?.focus(); }, []);
 
+  // Ferme si clic en dehors — flag mounted pour éviter fermeture immédiate
   useEffect(() => {
     let mounted = false;
     const handler = (e) => {
       if (!mounted) return;
       if (popRef.current && !popRef.current.contains(e.target)) onClose();
     };
+    // On marque mounted après le premier tick pour ignorer le clic d'ouverture
     const t = requestAnimationFrame(() => { mounted = true; });
     document.addEventListener('mousedown', handler);
     return () => {
@@ -30,7 +35,7 @@ export default function CellCommentPopover({ cellKey, dark, author, onClose, anc
     };
   }, [onClose]);
 
-  //Lit la valeur directement depuis le DOM — pas de re-render
+  // Lit la valeur directement depuis le DOM — pas de re-render
   const handleSend = () => {
     const val = inputRef.current?.value?.trim();
     if (!val) return;
@@ -88,15 +93,7 @@ export default function CellCommentPopover({ cellKey, dark, author, onClose, anc
                 <span className="text-[11px] font-bold text-[#00afa9]">{c.author}</span>
                 <div className="flex items-center gap-1">
                   <span className={`text-[9px] ${dark ? 'text-slate-600' : 'text-slate-400'}`}>{fmtDate(c.date)}</span>
-                  {c.author === author && (
-                    <button
-                      onClick={() => deleteComment(cellKey, c.id)}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-red-400 hover:text-red-300 transition-all cursor-pointer"
-                      title="Supprimer"
-                    >
-                      <Trash2 size={10} />
-                    </button>
-                  )}
+                  {/* Suppression des commentaires désactivée */}
                 </div>
               </div>
               <p className="text-[12px] leading-relaxed break-words">{c.text}</p>
@@ -105,7 +102,7 @@ export default function CellCommentPopover({ cellKey, dark, author, onClose, anc
         )}
       </div>
 
-      {/* Saisie — input non contrôlé */}
+      {/* Saisie — input non contrôlé, pas de value= ni onChange= */}
       <div className={`px-3 py-2 border-t ${dark ? 'border-[#30363d]' : 'border-slate-100'}`}>
         <div className="flex gap-1.5">
           <input

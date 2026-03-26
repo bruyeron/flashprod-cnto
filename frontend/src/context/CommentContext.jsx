@@ -39,26 +39,13 @@ export function CommentProvider({ children }) {
     });
   }, []);
 
-  // Supprime un commentaire par son id
-  const deleteComment = useCallback((cellKey, commentId) => {
-    setComments(prev => {
-      const updated = {
-        ...prev,
-        [cellKey]: (prev[cellKey] || []).filter(c => c.id !== commentId),
-      };
-      if (updated[cellKey].length === 0) delete updated[cellKey];
-      save(updated);
-      return updated;
-    });
-  }, []);
-
   // Vérifie si une cellule a au moins un commentaire
   const hasComment = useCallback((cellKey) => {
     return (comments[cellKey] || []).length > 0;
   }, [comments]);
 
   return (
-    <CommentContext.Provider value={{ getComments, addComment, deleteComment, hasComment }}>
+    <CommentContext.Provider value={{ getComments, addComment, hasComment }}>
       {children}
     </CommentContext.Provider>
   );

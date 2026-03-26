@@ -5,13 +5,11 @@ import {
   parseDate, shortDate, getDayLabel,
   fmtNum, fmtPct, fmtPctDecimal, fmtSec, fmtHHMM, fmtDecimal, getChipClass,
 } from '../utils/helpers';
-
 import { useComments } from '../context/CommentContext';
 import { useAuth } from '../context/AuthContext';
 import CellCommentPopover from './CellCommentPopover';
-
-// Valeurs manuelles pour abs_reel / non_logue
-import { loadManualValues, weekTotal } from './WeeklyCompletionModal';
+// [v12-2] weekAverage importé : la colonne Tot. des lignes manuelles affiche la moyenne
+import { loadManualValues, weekTotal, weekAverage } from './WeeklyCompletionModal';
 
 // ToggleBtn
 function ToggleBtn({ collapsed, onClick, dark }) {
@@ -78,13 +76,14 @@ function DataCell({ value, row, dark, cellKey, tdClass }) {
   );
 }
 
-// Main
-export default function DataTable({ dataIdx, collapseState, onToggle, dark }) {
+// Main 
+export default function DataTable({ dataIdx, collapseState, onToggle, dark, currentActivity = '' }) {
   const { dateIndex, dateWeek, sortedDates, allFiles, allRd } = dataIdx;
   const rows = buildRows(allFiles, allRd);
 
-  // Charger les valeurs manuelles depuis localStorage
-  const manualValues = loadManualValues();
+  // Structure : { [activity]: { [week]: { abs_reel: [...], non_logue: [...] } } }
+  const _allManualValues = loadManualValues();
+  const manualValues = _allManualValues[currentActivity] || {};
 
   const weekDay = {};
   sortedDates.forEach((dt) => {
@@ -103,20 +102,22 @@ export default function DataTable({ dataIdx, collapseState, onToggle, dark }) {
   const hov      = dark ? 'hover:bg-[#1f2d45]' : 'hover:bg-blue-50';
   const wkBg     = dark ? 'bg-[#1a2035]'     : 'bg-[#f0f4ff]';
 
+
+  // [v12-2] resolveValue — colonne Tot. affiche MOYENNE pour abs_reel et non_logue
   const resolveValue = (row, agg, weekKey, dayIndex) => {
     if (row.code === 'abs_reel') {
       if (dayIndex !== undefined && weekKey) {
         const v = manualValues[weekKey]?.abs_reel?.[dayIndex];
         return (v !== null && v !== undefined && v !== '') ? Number(v) : null;
       }
-      if (weekKey) return weekTotal(manualValues[weekKey], 'abs_reel');
+      if (weekKey) return weekAverage(manualValues[weekKey]?.abs_reel);
     }
     if (row.code === 'non_logue') {
       if (dayIndex !== undefined && weekKey) {
         const v = manualValues[weekKey]?.non_logue?.[dayIndex];
         return (v !== null && v !== undefined && v !== '') ? Number(v) : null;
       }
-      if (weekKey) return weekTotal(manualValues[weekKey], 'non_logue');
+      if (weekKey) return weekAverage(manualValues[weekKey]?.non_logue);
     }
     return row.formula(agg);
   };
@@ -133,28 +134,28 @@ export default function DataTable({ dataIdx, collapseState, onToggle, dark }) {
       const wAgg   = buildAgg(wDates, dateIndex);
       const wVal   = resolveValue(row, wAgg, w);
 
+      //cellKey préfixée par currentActivity → isolation par activité
       if (collapseState['w:' + w]) {
         return (
           <DataCell key={w} value={wVal} row={row} dark={dark}
-            cellKey={`${row.code}::${w}::total`}
+            cellKey={`${currentActivity}::${row.code}::${w}::total`}
             tdClass={`px-2 py-1.5 text-center border-b border-r-[3px] border-blue-500 text-[12px] font-bold min-w-[72px] ${wkBg}`} />
         );
       }
 
       return [
         ...wDates.map((dt) => {
-          // Pour abs_reel / non_logue : lire la valeur journalière depuis manualValues
           const dayVal = (row.code === 'abs_reel' || row.code === 'non_logue')
             ? resolveValue(row, null, w, dateToManualIndex(dt))
             : row.formula(dateIndex[dt] || {});
           return (
             <DataCell key={dt} value={dayVal} row={row} dark={dark}
-              cellKey={`${row.code}::${w}::${dt}`}
+              cellKey={`${currentActivity}::${row.code}::${w}::${dt}`}
               tdClass={`px-2 py-1.5 text-center border-b border-r ${brd} text-[12px] min-w-[72px] ${row.type === 'kpi' ? 'font-semibold' : 'font-normal'}`} />
           );
         }),
         <DataCell key={w + '-wt'} value={wVal} row={row} dark={dark}
-          cellKey={`${row.code}::${w}::total`}
+          cellKey={`${currentActivity}::${row.code}::${w}::total`}
           tdClass={`px-2 py-1.5 text-center border-b border-l border-r-2 ${brdS} text-[12px] font-bold min-w-[72px] ${wkBg}`} />,
       ];
     });

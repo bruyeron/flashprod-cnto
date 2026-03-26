@@ -1,6 +1,6 @@
 import { v, pct } from "../utils/helpers";
 
-// ─── shortcuts ───────────────────────────────
+// shortcuts
 const inc = (attr) => (d) => v(d, "incoming", attr);
 const prev = (attr) => (d) => v(d, "prev", attr);
 const isol = (attr) => (d) => v(d, "isol", attr);
@@ -10,7 +10,7 @@ const h7 = (attr) => (d) => v(d, "Yas_7-21h", attr);   // tranche 7h-21h
 const p21 = (attr) => (d) => v(d, "prev_yas_21-6h", attr);
 const p7 = (attr) => (d) => v(d, "prev_yas_7-21h", attr);
 
-// ─── duration helpers ────────────────────────
+// duration helpers
 // Durations stored as seconds in the aggregated index
 const durSec = (src, attr) => (d) => v(d, src, attr); // raw seconds
 const hLog = (d) => {

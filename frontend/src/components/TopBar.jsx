@@ -1,30 +1,21 @@
-/**
- * src/components/TopBar.jsx
- *
- * DIFFÉRENCES v8 vs v6 :
- *  [1] Import de WeeklyCompletionModal et état showCompletion
- *  [2] Bouton "Complétion hebdomadaire" (icône ClipboardCheck) — visible pour tous
- *  [3] Bouton "Charger CSV" visible UNIQUEMENT pour les admins
- *  [4] Prop sortedWeeks transmise à WeeklyCompletionModal
- */
 import { useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Sun, Moon, Upload, Power, CircleUserRound, ShieldCheck, ClipboardCheck } from 'lucide-react';
 import logo from '../assets/logo.png';
 import AdminPanel from './AdminPanel';
-// [1] Nouveau import v8
 import WeeklyCompletionModal from './WeeklyCompletionModal';
 
+// [v12-1] currentActivity ajouté : indique l'activité sélectionnée dans la TopBar
 export default function TopBar({
   dark, onToggleTheme,
   allGroups, selectedGroup, onGroupChange,
   statusMsg, onFileLoad,
-  sortedWeeks, // [4] Nouvelles données pour la modal
+  sortedWeeks,
+  currentActivity = '',
 }) {
   const fileRef = useRef();
   const { isAuthenticated, user, logout, isAdmin } = useAuth();
   const [showAdmin, setShowAdmin]           = useState(false);
-  // [1] Nouvel état pour la modal de complétion
   const [showCompletion, setShowCompletion] = useState(false);
 
   const bg2    = dark ? 'bg-[#161b22]'     : 'bg-white';
@@ -126,12 +117,13 @@ export default function TopBar({
       {/* Modals */}
       {showAdmin && <AdminPanel dark={dark} onClose={() => setShowAdmin(false)} />}
 
-      {/* [1] Modal complétion hebdomadaire */}
+      {/* Modal complétion hebdomadaire */}
       {showCompletion && (
         <WeeklyCompletionModal
           dark={dark}
           sortedWeeks={sortedWeeks || []}
           onClose={() => setShowCompletion(false)}
+          currentActivity={currentActivity}  // [v12-1] activité courante
         />
       )}
     </>
