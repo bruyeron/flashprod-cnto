@@ -1,13 +1,3 @@
-/**
- * src/App.jsx
- *
- * DIFFÉRENCES v11 vs v10 :
- *  [v11-1] selectedGroup transmis à DataTable et à TopBar (→ WeeklyCompletionModal)
- *          pour que commentaires et valeurs manuelles soient isolés par activité.
- *
- * Inchangé depuis v8 :
- *  sortedWeeks extrait depuis dataIdx et transmis à TopBar → WeeklyCompletionModal
- */
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
 import TopBar from './components/TopBar';
@@ -120,14 +110,14 @@ export default function App() {
         statusMsg={statusMsg}
         onFileLoad={handleFileLoad}
         sortedWeeks={sortedWeeks}
-        // [v11-1] Activité courante transmise pour isoler commentaires et valeurs manuelles
+        // Activité courante transmise pour isoler commentaires et valeurs manuelles
         currentActivity={selectedGroup}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         {!dataIdx
           ? <EmptyState dark={dark} />
           : (
-            // [v11-1] currentActivity transmis à DataTable
+            // currentActivity transmis à DataTable
             <DataTable
               dataIdx={dataIdx}
               collapseState={collapseState}
@@ -138,7 +128,8 @@ export default function App() {
           )
         }
       </div>
-      {dataIdx && <Legend dark={dark} />}
+      {/*  currentActivity transmis à Legend pour afficher la devise */}
+      {dataIdx && <Legend dark={dark} currentActivity={selectedGroup} />}
       {loading && <Loading dark={dark} message="Traitement des données…" />}
     </div>
   );

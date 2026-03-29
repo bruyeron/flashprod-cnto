@@ -79,7 +79,8 @@ function DataCell({ value, row, dark, cellKey, tdClass }) {
 // Main 
 export default function DataTable({ dataIdx, collapseState, onToggle, dark, currentActivity = '' }) {
   const { dateIndex, dateWeek, sortedDates, allFiles, allRd } = dataIdx;
-  const rows = buildRows(allFiles, allRd);
+  // [v12-4] currentActivity transmis à buildRows pour injecter les lignes YAS 21h-7h
+  const rows = buildRows(allFiles, allRd, currentActivity);
 
   // Structure : { [activity]: { [week]: { abs_reel: [...], non_logue: [...] } } }
   const _allManualValues = loadManualValues();

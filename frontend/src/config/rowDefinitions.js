@@ -1,16 +1,19 @@
 import { v, pct } from "../utils/helpers";
 
-// shortcuts
+// ─── shortcuts ───────────────────────────────
 const inc = (attr) => (d) => v(d, "incoming", attr);
 const prev = (attr) => (d) => v(d, "prev", attr);
 const isol = (attr) => (d) => v(d, "isol", attr);
 const rd = (attr) => (d) => v(d, "rd", attr);
-const h21 = (attr) => (d) => v(d, "Yas_21-6h", attr);   // tranche 21h-6h
+// [v14-1a] Correction : Yas_21-7h (correspondance réelle du CSV)
+const h21 = (attr) => (d) => v(d, "Yas_21-7h", attr);   // tranche 21h-7h
+// [v14-1a] Source jour confirmée
 const h7 = (attr) => (d) => v(d, "Yas_7-21h", attr);   // tranche 7h-21h
-const p21 = (attr) => (d) => v(d, "prev_yas_21-6h", attr);
+// [v14-1a] Correction : prev_yas_21-7h
+const p21 = (attr) => (d) => v(d, "prev_yas_21-7h", attr);
 const p7 = (attr) => (d) => v(d, "prev_yas_7-21h", attr);
 
-// duration helpers
+// ─── duration helpers ────────────────────────
 // Durations stored as seconds in the aggregated index
 const durSec = (src, attr) => (d) => v(d, src, attr); // raw seconds
 const hLog = (d) => {
@@ -77,7 +80,9 @@ export const ROW_DEFS = [
   // ══════════════════════════════════════════
   // 2. VOLUMÉTRIE
   // ══════════════════════════════════════════
-  { type: "section", label: "Volumétrie" },
+  // [v12-YAS] Pour YAS, cette section est labelisée "Volumétrie 7h–21h"
+  // Le label réel est injecté par buildRows selon l'activité courante
+  { type: "section", label: "Volumétrie", code: "__vol_day__" },
   { type: "sub", label: "Reçus", code: "recu", formula: inc("recu"), fmt: "number" },
   { type: "kpi", label: "% TRP vs Prévisions", code: "%trp_prev", formula: (d) => pct(v(d, "incoming", "recu"), v(d, "prev", "prevision")), fmt: "percent", refMin: 0.90, refMax: 1.10, colorMode: "range" },
   { type: "kpi", label: "% TRP vs Reforecast", code: "%trp_ref", formula: (d) => pct(v(d, "incoming", "recu"), v(d, "prev", "reforecast")), fmt: "percent", refMin: 0.90, refMax: 1.10, colorMode: "range" },
@@ -470,35 +475,134 @@ export const ROW_DEFS = [
 // ─────────────────────────────────────────────
 // Build final rows (inject dynamic file/rd rows)
 // ─────────────────────────────────────────────
-export function buildRows(allFiles, allRd) {
+//
+//  Refonte complète de la section YAS :
+//   - Sources corrigées selon le CSV réel :
+//       Yas_7-21h  avec attributs recu_7-21h / traite_7-21h / traite_sl_7-21h
+//       Yas_21-7h  avec attributs recu_21-7h / traite_21-7h / traite_sl_21-7h
+//   - Les indicateurs 7h-21h et 21h-7h sont identiques (même liste de lignes)
+//   - Seul le suffixe de la section change (7h–21h vs 21h–7h)
+//   - Modifications invisibles sur les autres activités
+
+export function buildRows(allFiles, allRd, activity = '') {
+  const isYas = activity === 'Yas';
   const result = [];
+
+  // ── Helper : génère les lignes de volumétrie pour une tranche YAS ───────────
+  // Même structure pour les deux tranches, seules les sources diffèrent
+  const yasVolRows = (tranche) => {
+    // tranche = '7-21' ou '21-7'
+    const src   = tranche === '7-21' ? 'Yas_7-21h'      : 'Yas_21-7h';
+    const prev  = tranche === '7-21' ? 'prev_yas_7-21h'  : 'prev_yas_21-7h';
+    const sfx   = tranche === '7-21' ? '_7'              : '_21';   // suffixe des codes
+    const label = tranche === '7-21' ? '(7h–21h)'        : '(21h–7h)';
+
+    // Attributs réels du CSV pour chaque tranche
+    const A_RECU  = tranche === '7-21' ? 'recu_7-21h'       : 'recu_21-7h';
+    const A_TRAIT = tranche === '7-21' ? 'traite_7-21h'      : 'traite_21-7h';
+    const A_SL    = tranche === '7-21' ? 'traite_sl_7-21h'   : 'traite_sl_21-7h';
+
+    return [
+      {
+        type: "sub", label: `Reçus ${label}`,
+        code: `recu${sfx}`,
+        formula: (d) => v(d, src, A_RECU),
+        fmt: "number",
+      },
+      {
+        type: "kpi", label: `% TRP vs Prévisions ${label}`,
+        code: `%trp_prev${sfx}`,
+        formula: (d) => pct(v(d, src, A_RECU), v(d, prev, `prevision_${tranche}h`)),
+        fmt: "percent", refMin: 0.90, refMax: 1.10, colorMode: "range",
+      },
+      {
+        type: "kpi", label: `% TRP vs Reforecast ${label}`,
+        code: `%trp_ref${sfx}`,
+        formula: (d) => pct(v(d, src, A_RECU), v(d, prev, `reforecast_${tranche}h`)),
+        fmt: "percent", refMin: 0.90, refMax: 1.10, colorMode: "range",
+      },
+      {
+        type: "sub", label: `Traités ${label}`,
+        code: `traite${sfx}`,
+        formula: (d) => v(d, src, A_TRAIT),
+        fmt: "number",
+      },
+      {
+        type: "kpi", label: `% QS ${label}`,
+        code: `%qs${sfx}`,
+        formula: (d) => pct(v(d, src, A_TRAIT), v(d, src, A_RECU)),
+        fmt: "percent", refMin: 0.90, refMax: 0.90, colorMode: "min",
+      },
+      {
+        type: "sub", label: `Traité SL < 20 sec ${label}`,
+        code: `traite_sl${sfx}`,
+        formula: (d) => v(d, src, A_SL),
+        fmt: "number",
+      },
+      {
+        type: "kpi", label: `% SL ${label}`,
+        code: `%sl${sfx}`,
+        formula: (d) => pct(v(d, src, A_SL), v(d, src, A_TRAIT)),
+        fmt: "percent", refMin: 0.80, colorMode: "min",
+      },
+    ];
+  };
+
   for (const row of ROW_DEFS) {
-    result.push(row);
+    //  Renommer la section Volumétrie en "Volumétrie 7h–21h" pour YAS
+    if (row.code === '__vol_day__') {
+      result.push({ ...row, label: isYas ? 'Volumétrie 7h–21h' : 'Volumétrie' });
+
+      //  Pour YAS, remplacer les lignes Volumétrie standard par les lignes tranche jour
+      if (isYas) {
+        yasVolRows('7-21').forEach(r => result.push(r));
+        // Sauter les lignes standard de volumétrie (elles seront ignorées via __skip_vol__)
+      }
+    } else if (row.code && row.code.startsWith('__skip_vol__')) {
+      // ligne marquée à ignorer pour YAS → on ne push rien
+    } else {
+      //  Pour YAS, ne pas injecter les lignes de volumétrie standard
+      // (recu, %trp_prev, %trp_ref, traite, %qs, traite_sl, %sl, transfert, %transfert, racc, %racc)
+      // car elles sont remplacées par les lignes tranche
+      const YAS_VOL_CODES = new Set([
+        'recu','%trp_prev','%trp_ref','traite','%qs','traite_sl','%sl',
+        'transfert','%transfert','racc','%racc'
+      ]);
+      if (isYas && YAS_VOL_CODES.has(row.code)) {
+        // Ne pas afficher ces lignes pour YAS (remplacées par les tranches)
+      } else {
+        result.push(row);
+      }
+    }
 
     // Inject file % rows after the "Répartition" section header
     if (row.dynamicFiles) {
       allFiles.forEach((f) => {
         result.push({
-          type: "sub",
-          label: f,
-          code: f,
+          type: "sub", label: f, code: f,
           formula: (d) => {
             const file = v(d, "files", f);
-            const recu = v(d, "incoming", "recu");
+            const recu = isYas
+              ? (v(d, "Yas_7-21h", "recu_7-21h") || 0) + (v(d, "Yas_21-7h", "recu_21-7h") || 0)
+              : v(d, "incoming", "recu");
             return file !== null && recu ? file / recu : null;
           },
           fmt: "percent",
         });
       });
+
+      //  Injecter la section Volumétrie 21h–7h juste après la Répartition pour YAS
+      if (isYas) {
+        result.push({ type: "section", label: "Volumétrie 21h–7h" });
+        yasVolRows('21-7').forEach(r => result.push(r));
+      }
     }
 
-    // Inject rd duration rows after "Traitement", "Management", etc. section headers
+    // Inject rd duration rows
     if (row.dynamicRd && row.rdKeys) {
       row.rdKeys.forEach((k) => {
         result.push({
-          type: "sub",
-          label: k,
-          code: k,
+          type: "sub", label: k, code: k,
           formula: (d) => v(d, "rd", k),
           fmt: "duration",
         });
