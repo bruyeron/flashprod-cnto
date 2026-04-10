@@ -437,36 +437,52 @@ export const ROW_DEFS = [
   {
     type: "kpi", label: "Chiffre d'affaires", code: "ca",
     formula: (d) => {
-      const traite = v(d, "incoming", "traite");
+      const ca_yas_jour = v(d, "Yas_7-21h", "ca");
+      const ca_yas_nuit = v(d, "Yas_21-7h", "ca_21h");
+      const ca_yas = ca_yas_jour + ca_yas_nuit; 
+
+      const ca = v(d, "incoming", "ca");
       // CA = appels reçus × tarif (0.3 par appel - from Excel row 131 col D = 0.3)
-      return traite ? traite * 0.3 : null;
+      return ca ? ca : ca_yas ? ca_yas : null;
     },
     fmt: "decimal2",
   },
   {
     type: "kpi", label: "CA / Heures planifiées", code: "ca_hp",
     formula: (d) => {
-      const traite = v(d, "incoming", "traite");
+      const ca_yas_jour = v(d, "Yas_7-21h", "ca");
+      const ca_yas_nuit = v(d, "Yas_21-7h", "ca_21h");
+      const ca_yas = ca_yas_jour + ca_yas_nuit; 
+
+      const ca = v(d, "incoming", "ca");
       const plan = v(d, "prev", "planning2");
-      return traite && plan ? (traite * 0.3) / plan : null;
+      return ca && plan ? ca / (plan) : ca_yas ? ca_yas / (plan) : null;
     },
     fmt: "decimal2", refMin: 4.32, colorMode: "min",
   },
   {
     type: "kpi", label: "CA / Heures loguées", code: "ca_hl",
     formula: (d) => {
-      const traite = v(d, "incoming", "traite");
+      const ca_yas_jour = v(d, "Yas_7-21h", "ca");
+      const ca_yas_nuit = v(d, "Yas_21-7h", "ca_21h");
+      const ca_yas = ca_yas_jour + ca_yas_nuit; 
+
+      const ca = v(d, "incoming", "ca");
       const hl = hLog(d);
-      return traite && hl ? (traite * 0.3) / (hl / 3600) : null;
+      return ca && hl ? ca / (hl / 3600) : ca_yas ? ca_yas / (hl / 3600) : null;
     },
     fmt: "decimal2", refMin: 6, colorMode: "min",
   },
   {
     type: "kpi", label: "CA / ETP Planifiés", code: "ca_etp",
     formula: (d) => {
-      const traite = v(d, "incoming", "traite");
+      const ca_yas_jour = v(d, "Yas_7-21h", "ca");
+      const ca_yas_nuit = v(d, "Yas_21-7h", "ca_21h");
+      const ca_yas = ca_yas_jour + ca_yas_nuit; 
+
+      const ca = v(d, "incoming", "ca");
       const plan = v(d, "prev", "planning2");
-      return traite && plan ? (traite * 0.3) / (plan / 8) : null;
+      return ca && plan ? ca / (plan / 8) : ca_yas ? ca_yas / (plan / 8) : null;
     },
     fmt: "decimal2",
   },
