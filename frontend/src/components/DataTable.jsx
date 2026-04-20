@@ -1,15 +1,25 @@
+/**
+ * src/components/DataTable.jsx
+ *
+ * MODIFICATION PAR RAPPORT À L'ORIGINAL :
+ *  - Suppression de l'import loadManualValues (localStorage)
+ *  - manualValues est maintenant reçu en prop depuis App.jsx
+ *    (données chargées via l'API /api/manual/{activity})
+ *  - Le reste du composant (rendu, calculs, commentaires) est strictement inchangé
+ */
+
 import { useState, useCallback } from 'react';
 import { buildRows } from '../config/rowDefinitions';
-import { buildAgg } from '../utils/dataProcessor';
+import { buildAgg }  from '../utils/dataProcessor';
 import {
   parseDate, shortDate, getDayLabel,
   fmtNum, fmtPct, fmtPctDecimal, fmtSec, fmtHHMM, fmtDecimal, getChipClass,
 } from '../utils/helpers';
 import { useComments } from '../context/CommentContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth }     from '../context/AuthContext';
 import CellCommentPopover from './CellCommentPopover';
-// [v12-2] weekAverage importé : la colonne Tot. des lignes manuelles affiche la moyenne
-import { loadManualValues, weekTotal, weekAverage } from './WeeklyCompletionModal';
+import { weekAverage }    from './WeeklyCompletionModal';
+// MODIFIÉ : loadManualValues supprimé — manualValues vient désormais des props
 
 // ToggleBtn
 function ToggleBtn({ collapsed, onClick, dark }) {
@@ -41,7 +51,7 @@ function CellValue({ value, row, dark }) {
   return <span className={`inline-block px-1.5 py-0.5 rounded-full text-[12px] font-semibold leading-tight ${chipClass || ''}`}>{formatted}</span>;
 }
 
-// DataCell — cellule avec support commentaire
+// DataCell — cellule avec support commentaire (inchangée)
 function DataCell({ value, row, dark, cellKey, tdClass }) {
   const { hasComment } = useComments();
   const { user } = useAuth();
@@ -56,7 +66,6 @@ function DataCell({ value, row, dark, cellKey, tdClass }) {
   return (
     <>
       <td onClick={handleClick} className={`${tdClass} relative cursor-pointer select-none group/cell`} title="Cliquer pour commenter">
-        {/* Triangle indicateur orange si commentaire présent */}
         {hasC && (
           <span className="absolute top-0 right-0 w-0 h-0 z-10 pointer-events-none"
             style={{ borderStyle: 'solid', borderWidth: '0 7px 7px 0', borderColor: 'transparent #f59e0b transparent transparent' }} />
@@ -76,15 +85,23 @@ function DataCell({ value, row, dark, cellKey, tdClass }) {
   );
 }
 
-// Main 
-export default function DataTable({ dataIdx, collapseState, onToggle, dark, currentActivity = '' }) {
+// ── Composant principal ────────────────────────────────────────────────────────
+
+export default function DataTable({
+  dataIdx,
+  collapseState,
+  onToggle,
+  dark,
+  currentActivity = '',
+  // MODIFIÉ : manualValues reçu depuis App.jsx (chargé via API)
+  manualValues = {},
+}) {
   const { dateIndex, dateWeek, sortedDates, allFiles, allRd } = dataIdx;
-  // [v12-4] currentActivity transmis à buildRows pour injecter les lignes YAS 21h-7h
   const rows = buildRows(allFiles, allRd, currentActivity);
 
-  // Structure : { [activity]: { [week]: { abs_reel: [...], non_logue: [...] } } }
-  const _allManualValues = loadManualValues();
-  const manualValues = _allManualValues[currentActivity] || {};
+  // MODIFIÉ : plus de loadManualValues() ici
+  // manualValues est déjà { "Sem-36": { abs_reel: [...], non_logue: [...] } }
+  const activityManualValues = manualValues;
 
   const weekDay = {};
   sortedDates.forEach((dt) => {
@@ -103,30 +120,27 @@ export default function DataTable({ dataIdx, collapseState, onToggle, dark, curr
   const hov      = dark ? 'hover:bg-[#1f2d45]' : 'hover:bg-blue-50';
   const wkBg     = dark ? 'bg-[#1a2035]'     : 'bg-[#f0f4ff]';
 
-
-  // [v12-2] resolveValue — colonne Tot. affiche MOYENNE pour abs_reel et non_logue
   const resolveValue = (row, agg, weekKey, dayIndex) => {
     if (row.code === 'abs_reel') {
       if (dayIndex !== undefined && weekKey) {
-        const v = manualValues[weekKey]?.abs_reel?.[dayIndex];
+        const v = activityManualValues[weekKey]?.abs_reel?.[dayIndex];
         return (v !== null && v !== undefined && v !== '') ? Number(v) : null;
       }
-      if (weekKey) return weekAverage(manualValues[weekKey]?.abs_reel);
+      if (weekKey) return weekAverage(activityManualValues[weekKey]?.abs_reel);
     }
     if (row.code === 'non_logue') {
       if (dayIndex !== undefined && weekKey) {
-        const v = manualValues[weekKey]?.non_logue?.[dayIndex];
+        const v = activityManualValues[weekKey]?.non_logue?.[dayIndex];
         return (v !== null && v !== undefined && v !== '') ? Number(v) : null;
       }
-      if (weekKey) return weekAverage(manualValues[weekKey]?.non_logue);
+      if (weekKey) return weekAverage(activityManualValues[weekKey]?.non_logue);
     }
     return row.formula(agg);
   };
 
-  // Convertit getDay() (0=dim,1=lun..6=sam) vers index tableau (0=lun..6=dim)
   const dateToManualIndex = (dt) => {
-    const jsDay = parseDate(dt).getDay(); // 0=dim, 1=lun, ..., 6=sam
-    return jsDay === 0 ? 6 : jsDay - 1;  // → 0=lun, ..., 5=sam, 6=dim
+    const jsDay = parseDate(dt).getDay();
+    return jsDay === 0 ? 6 : jsDay - 1;
   };
 
   const dataCols = (row) =>
@@ -135,7 +149,6 @@ export default function DataTable({ dataIdx, collapseState, onToggle, dark, curr
       const wAgg   = buildAgg(wDates, dateIndex);
       const wVal   = resolveValue(row, wAgg, w);
 
-      //cellKey préfixée par currentActivity → isolation par activité
       if (collapseState['w:' + w]) {
         return (
           <DataCell key={w} value={wVal} row={row} dark={dark}
@@ -233,7 +246,6 @@ export default function DataTable({ dataIdx, collapseState, onToggle, dark, curr
               <tr key={ri} className={`group ${hov}`} style={{ background: bg }}>
                 <td className={`sticky left-0 z-20 px-2.5 py-1.5 text-left border-b border-r ${brd} text-[13px] ${isKpi ? `font-semibold pl-3.5 ${txt}` : `font-normal pl-6 ${txtMuted}`}`} style={{ background: bg }}>
                   {row.label}
-                  {/* Badge "manuel" pour les lignes à saisie manuelle */}
                   {(row.code === 'abs_reel' || row.code === 'non_logue') && (
                     <span className={`ml-2 text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${dark ? 'bg-amber-900/40 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>manuel</span>
                   )}

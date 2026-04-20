@@ -1,25 +1,42 @@
+/**
+ * src/App.jsx
+ *
+ * MODIFICATIONS PAR RAPPORT À L'ORIGINAL :
+ *  - selectedGroup transmis au CommentProvider (nécessaire pour charger les
+ *    commentaires de l'activité courante via l'API)
+ *  - useManualValues importé depuis WeeklyCompletionModal pour charger les
+ *    saisies manuelles côté App et les passer à DataTable
+ *  - Le reste (chargement CSV, changement de groupe, dark mode) est inchangé
+ */
+
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
-import TopBar from './components/TopBar';
+import TopBar     from './components/TopBar';
 import EmptyState from './components/EmptyState';
-import DataTable from './components/DataTable';
-import Legend from './components/Legend';
-import Loading from './components/Loading';
-import { parseCSV } from './utils/csvParser';
+import DataTable  from './components/DataTable';
+import Legend     from './components/Legend';
+import Loading    from './components/Loading';
+import { parseCSV }   from './utils/csvParser';
 import { buildIndex } from './utils/dataProcessor';
+// MODIFIÉ : import du hook de chargement API des saisies manuelles
+import { useManualValues } from './components/WeeklyCompletionModal';
 
 export default function App() {
-  const [dark, setDark]               = useState(false);
-  const [rawData, setRawData]         = useState([]);
-  const [allGroups, setAllGroups]     = useState([]);
-  const [selectedGroup, setSelectedGroup] = useState('');
-  const [collapseState, setCollapseState] = useState({});
-  const [dataIdx, setDataIdx]         = useState(null);
-  const [loading, setLoading]         = useState(false);
-  const [statusMsg, setStatusMsg]     = useState('Aucun fichier chargé');
+  const [dark, setDark]                       = useState(false);
+  const [rawData, setRawData]                 = useState([]);
+  const [allGroups, setAllGroups]             = useState([]);
+  const [selectedGroup, setSelectedGroup]     = useState('');
+  const [collapseState, setCollapseState]     = useState({});
+  const [dataIdx, setDataIdx]                 = useState(null);
+  const [loading, setLoading]                 = useState(false);
+  const [statusMsg, setStatusMsg]             = useState('Aucun fichier chargé');
 
   const { token, isAuthenticated, isAdmin, user } = useAuth();
   const allowedServices = isAdmin ? null : (user?.services || []);
+
+  // NOUVEAU : chargement des saisies manuelles depuis l'API
+  // Les données sont rechargées automatiquement quand selectedGroup change
+  const { values: manualValues } = useManualValues(selectedGroup, token);
 
   const handleToggle = useCallback((key) => {
     setCollapseState((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -110,25 +127,24 @@ export default function App() {
         statusMsg={statusMsg}
         onFileLoad={handleFileLoad}
         sortedWeeks={sortedWeeks}
-        // Activité courante transmise pour isoler commentaires et valeurs manuelles
         currentActivity={selectedGroup}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         {!dataIdx
           ? <EmptyState dark={dark} />
           : (
-            // currentActivity transmis à DataTable
             <DataTable
               dataIdx={dataIdx}
               collapseState={collapseState}
               onToggle={handleToggle}
               dark={dark}
               currentActivity={selectedGroup}
+              // MODIFIÉ : saisies manuelles passées depuis l'API (plus de localStorage)
+              manualValues={manualValues}
             />
           )
         }
       </div>
-      {/*  currentActivity transmis à Legend pour afficher la devise */}
       {dataIdx && <Legend dark={dark} currentActivity={selectedGroup} />}
       {loading && <Loading dark={dark} message="Traitement des données…" />}
     </div>

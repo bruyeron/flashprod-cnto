@@ -1,29 +1,32 @@
 """
 backend/services/csv_service.py
-Lecture, filtrage et normalisation du fichier CSV de production.
+Lecture, filtrage et stockage du fichier CSV de production.
 
-Priorité de la source CSV :
-  1. data/production.csv  (fichier local uploadé ou placé manuellement)
-  2. BLOB_URL dans .env   (stockage distant, ex-Vercel Blob ou autre)
-
-Le filtrage par service se fait ici côté serveur.
+MODIFICATIONS PAR RAPPORT À L'ORIGINAL :
+  - Le CSV actif est maintenant lu depuis la table csv_files (PostgreSQL)
+    au lieu du fichier data/production.csv
+  - L'upload enregistre en base (avec historique) et désactive l'ancien actif
+  - La fonction get_csv_text() accepte une Session SQLAlchemy
+  - Le fallback BLOB_URL distant est conservé
+  - La normalisation et le filtrage par service sont inchangés
 """
 
 import csv
 import io
 import os
 import re
-from pathlib import Path
 from typing import Optional
+from sqlalchemy.orm import Session
 
-import httpx  # pip install httpx
+import httpx
 
-CSV_FILE = Path(__file__).parent.parent / "data" / "production.csv"
+from models.db_models import CsvFileDB
+
 BLOB_READ_WRITE_TOKEN = os.getenv("BLOB_READ_WRITE_TOKEN", "")
-BLOB_URL = os.getenv("BLOB_URL", "")
+BLOB_URL              = os.getenv("BLOB_URL", "")
 
 
-# ── Lecture du CSV ────────────────────────────────────────────────────────────
+# ── Lecture du CSV ─────────────────────────────────────────────────────────────
 
 async def _fetch_remote_csv() -> str:
     """Télécharge le CSV depuis le stockage distant (Blob/S3/autre)."""
@@ -36,30 +39,70 @@ async def _fetch_remote_csv() -> str:
         return r.text
 
 
-async def get_csv_text() -> str:
+def get_csv_text(db: Session) -> str:
     """
-    Retourne le texte brut du CSV.
-    Priorité : fichier local → URL distante.
+    MODIFIÉ : lit le CSV actif depuis PostgreSQL.
+    Priorité : base de données → URL distante.
     """
-    if CSV_FILE.exists():
-        return CSV_FILE.read_text(encoding="utf-8-sig")
+    # 1. CSV actif en base
+    active = db.query(CsvFileDB).filter_by(is_active=True).order_by(
+        CsvFileDB.uploaded_at.desc()
+    ).first()
+    if active:
+        return active.content
 
+    # 2. Fallback URL distante (conservé depuis l'original)
     if BLOB_URL:
-        return await _fetch_remote_csv()
+        import asyncio
+        return asyncio.run(_fetch_remote_csv())
 
     raise FileNotFoundError(
         "Aucun fichier CSV disponible. "
-        "Uploadez un fichier via /api/csv/upload ou configurez BLOB_URL dans .env"
+        "Importez un fichier via l'interface ou configurez BLOB_URL dans .env"
     )
 
 
-def save_csv(content: bytes) -> None:
-    """Sauvegarde le CSV uploadé en local."""
-    CSV_FILE.parent.mkdir(exist_ok=True)
-    CSV_FILE.write_bytes(content)
+def save_csv(db: Session, content: bytes, filename: str, uploaded_by: str) -> CsvFileDB:
+    """
+    MODIFIÉ : sauvegarde le CSV en base PostgreSQL.
+    Désactive tous les anciens CSV actifs avant d'enregistrer le nouveau.
+    """
+    # Désactiver l'ancien CSV actif
+    db.query(CsvFileDB).filter_by(is_active=True).update({"is_active": False})
+
+    # Décoder le contenu (UTF-8 avec BOM si présent)
+    text = content.decode("utf-8-sig")
+
+    new_csv = CsvFileDB(
+        filename=filename,
+        content=text,
+        uploaded_by=uploaded_by,
+        is_active=True,
+        file_size=len(content),
+    )
+    db.add(new_csv)
+    db.commit()
+    db.refresh(new_csv)
+    return new_csv
 
 
-# ── Normalisation ─────────────────────────────────────────────────────────────
+def list_csv_history(db: Session) -> list[dict]:
+    """Retourne l'historique des CSV importés (sans le contenu)."""
+    files = db.query(CsvFileDB).order_by(CsvFileDB.uploaded_at.desc()).all()
+    return [
+        {
+            "id": f.id,
+            "filename": f.filename,
+            "uploaded_by": f.uploaded_by,
+            "uploaded_at": f.uploaded_at.isoformat(),
+            "is_active": f.is_active,
+            "file_size": f.file_size,
+        }
+        for f in files
+    ]
+
+
+# ── Normalisation (inchangée) ──────────────────────────────────────────────────
 
 def _normalize_date(date_str: str) -> str:
     """Convertit YYYY-MM-DD en DD/MM/YYYY si nécessaire."""
@@ -74,7 +117,7 @@ def _normalize_csv(text: str) -> str:
     lines = text.splitlines()
     if not lines:
         return text
-    result = [lines[0]]  # header intact
+    result = [lines[0]]
     for line in lines[1:]:
         if not line.strip():
             continue
@@ -85,13 +128,10 @@ def _normalize_csv(text: str) -> str:
     return "\n".join(result)
 
 
-# ── Filtrage par service ──────────────────────────────────────────────────────
+# ── Filtrage par service (inchangé) ───────────────────────────────────────────
 
 def filter_by_services(csv_text: str, services: Optional[list[str]]) -> str:
-    """
-    Si services est None ou vide → retourne tout (admin).
-    Sinon filtre les lignes dont groupe_suivi est dans la liste.
-    """
+    """Filtre les lignes par groupe_suivi si l'utilisateur n'est pas admin."""
     if not services:
         return csv_text
 
@@ -105,7 +145,7 @@ def filter_by_services(csv_text: str, services: Optional[list[str]]) -> str:
     try:
         idx = columns.index("groupe_suivi")
     except ValueError:
-        return csv_text  # colonne absente, on retourne tout
+        return csv_text
 
     filtered = [header]
     for line in lines[1:]:
@@ -119,14 +159,13 @@ def filter_by_services(csv_text: str, services: Optional[list[str]]) -> str:
     return "\n".join(filtered)
 
 
-# ── Point d'entrée principal ──────────────────────────────────────────────────
+# ── Point d'entrée principal ───────────────────────────────────────────────────
 
-async def get_filtered_csv(services: Optional[list[str]]) -> str:
+def get_filtered_csv(db: Session, services: Optional[list[str]]) -> str:
     """
-    Charge le CSV, normalise les dates, filtre par services.
-    Retourne le CSV final prêt à être envoyé au frontend.
+    Charge le CSV actif depuis PostgreSQL, normalise les dates, filtre par services.
     """
-    raw = await get_csv_text()
+    raw        = get_csv_text(db)
     normalized = _normalize_csv(raw)
-    filtered = filter_by_services(normalized, services)
+    filtered   = filter_by_services(normalized, services)
     return filtered

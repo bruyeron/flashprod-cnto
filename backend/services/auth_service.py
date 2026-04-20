@@ -1,6 +1,14 @@
 """
 backend/services/auth_service.py
-Logique métier : hashage, sessions, CRUD utilisateurs, persistance JSON.
+Logique métier : authentification, sessions, CRUD utilisateurs.
+
+MODIFICATIONS PAR RAPPORT À L'ORIGINAL :
+  - Suppression de toute la persistance JSON (_load_users, _save_users, USERS_FILE)
+  - Suppression du dict _users en mémoire (remplacé par requêtes PostgreSQL)
+  - Toutes les fonctions reçoivent maintenant `db: Session` en paramètre
+  - Les sessions (_sessions dict) restent en mémoire — acceptable pour un seul serveur.
+    Si vous déployez plusieurs instances, migrez les sessions vers Redis.
+  - La fonction _bootstrap_admin() crée l'admin au 1er démarrage si absent
 """
 
 import hashlib
@@ -8,81 +16,98 @@ import secrets
 import json
 import os
 from datetime import datetime, timedelta
-from typing import Optional, Dict
-from pathlib import Path
+from typing import Optional
+from sqlalchemy.orm import Session
 
 from models.user import UserInDB, UserPublic
+from models.db_models import UserDB
 
-# ── Configuration ─────────────────────────────────────────────────────────────
+# ── Configuration ──────────────────────────────────────────────────────────────
 SALT          = os.getenv("PASSWORD_SALT", "flashprod_salt")
 ADMIN_PASS    = os.getenv("ADMIN_DEFAULT_PASS", "Admin@1234!")
 SESSION_HOURS = 8
-USERS_FILE    = Path(__file__).parent.parent / "data" / "users.json"
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Sessions en mémoire ────────────────────────────────────────────────────────
+# token → { user_id, expires_at }
+# ⚠ Perdu au redémarrage du serveur (les utilisateurs devront se reconnecter)
+_sessions: dict[str, dict] = {}
 
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
 def hash_password(plain: str) -> str:
     return hashlib.sha256(f"{plain}{SALT}".encode()).hexdigest()
-
 
 def generate_token() -> str:
     return secrets.token_hex(32)
 
-
-def to_public(user: UserInDB) -> UserPublic:
+def to_public(user: UserDB) -> UserPublic:
     return UserPublic(
         id=user.id,
         username=user.username,
         role=user.role,
-        services=user.services,
+        services=json.loads(user.services or "[]"),
         active=user.active,
     )
 
 
-# ── Persistance JSON ──────────────────────────────────────────────────────────
+# ── Bootstrap admin ───────────────────────────────────────────────────────────
+def bootstrap_admin(db: Session) -> None:
+    """
+    Appelé au démarrage depuis main.py.
+    Crée le compte admin par défaut s'il n'existe pas encore en base.
+    Migre aussi les utilisateurs depuis users.json si le fichier existe encore.
+    """
+    # Migration one-shot depuis users.json (si le fichier existe encore)
+    import os
+    from pathlib import Path
+    users_json = Path(__file__).parent.parent / "data" / "users.json"
+    if users_json.exists():
+        try:
+            with open(users_json, "r", encoding="utf-8") as f:
+                old_users = json.load(f)
+            for u in old_users:
+                exists = db.query(UserDB).filter_by(username=u["username"]).first()
+                if not exists:
+                    db.add(UserDB(
+                        id=u["id"],
+                        username=u["username"],
+                        password_hash=u["password_hash"],
+                        role=u["role"],
+                        services=json.dumps(u.get("services", [])),
+                        active=u.get("active", True),
+                    ))
+            db.commit()
+            # Renommer le fichier pour ne pas re-migrer
+            users_json.rename(users_json.with_suffix(".json.migrated"))
+            print("✓ Migration users.json → PostgreSQL effectuée")
+        except Exception as e:
+            print(f"⚠ Migration users.json échouée : {e}")
+            db.rollback()
 
-def _load_users() -> Dict[str, UserInDB]:
-    """Charge users.json. Crée le fichier avec admin par défaut si inexistant."""
-    USERS_FILE.parent.mkdir(exist_ok=True)
-    if not USERS_FILE.exists():
-        admin = UserInDB(
+    # Créer admin par défaut si aucun utilisateur en base
+    count = db.query(UserDB).count()
+    if count == 0:
+        admin = UserDB(
             id="1",
             username="admin",
             password_hash=hash_password(ADMIN_PASS),
             role="admin",
-            services=[],
+            services="[]",
             active=True,
         )
-        _save_users({"admin": admin})
-        return {"admin": admin}
-
-    with open(USERS_FILE, "r", encoding="utf-8") as f:
-        raw = json.load(f)
-    return {u["username"]: UserInDB(**u) for u in raw}
+        db.add(admin)
+        db.commit()
+        print("✓ Compte admin créé avec le mot de passe par défaut")
 
 
-def _save_users(users: Dict[str, UserInDB]) -> None:
-    """Sauvegarde le dictionnaire d'utilisateurs dans users.json."""
-    USERS_FILE.parent.mkdir(exist_ok=True)
-    with open(USERS_FILE, "w", encoding="utf-8") as f:
-        json.dump([u.model_dump() for u in users.values()], f, indent=2, ensure_ascii=False)
-
-
-# ── Store en mémoire (chargé au démarrage) ────────────────────────────────────
-_users: Dict[str, UserInDB] = _load_users()
-_sessions: Dict[str, dict] = {}   # token → { user_id, expires_at }
-
-
-# ── Fonctions publiques ───────────────────────────────────────────────────────
-
-def authenticate(username: str, password: str) -> Optional[str]:
-    """
-    Vérifie les identifiants. Retourne un token de session ou None.
-    """
-    user = _users.get(username.strip().lower())
-    if not user or not user.active:
-        return None
-    if hash_password(password) != user.password_hash:
+# ── Authentification ───────────────────────────────────────────────────────────
+def authenticate(db: Session, username: str, password: str) -> Optional[str]:
+    """Vérifie les identifiants. Retourne un token ou None."""
+    user = db.query(UserDB).filter_by(
+        username=username.strip().lower(),
+        active=True
+    ).first()
+    if not user or hash_password(password) != user.password_hash:
         return None
     token = generate_token()
     _sessions[token] = {
@@ -92,7 +117,7 @@ def authenticate(username: str, password: str) -> Optional[str]:
     return token
 
 
-def get_user_from_token(token: str) -> Optional[UserInDB]:
+def get_user_from_token(db: Session, token: str) -> Optional[UserDB]:
     """Retourne l'utilisateur associé au token, ou None si invalide/expiré."""
     session = _sessions.get(token)
     if not session:
@@ -100,37 +125,47 @@ def get_user_from_token(token: str) -> Optional[UserInDB]:
     if datetime.utcnow() > session["expires_at"]:
         del _sessions[token]
         return None
-    return next((u for u in _users.values() if u.id == session["user_id"]), None)
+    return db.query(UserDB).filter_by(id=session["user_id"]).first()
 
 
 def invalidate_token(token: str) -> None:
     _sessions.pop(token, None)
 
 
-def list_users() -> list[UserPublic]:
-    return [to_public(u) for u in _users.values()]
+# ── CRUD utilisateurs ──────────────────────────────────────────────────────────
+def list_users(db: Session) -> list[UserPublic]:
+    users = db.query(UserDB).all()
+    return [to_public(u) for u in users]
 
 
-def create_user(username: str, password: str, role: str, services: list[str]) -> UserPublic:
+def create_user(
+    db: Session,
+    username: str,
+    password: str,
+    role: str,
+    services: list[str],
+) -> UserPublic:
     key = username.strip().lower()
-    if key in _users:
+    if db.query(UserDB).filter_by(username=key).first():
         raise ValueError("Nom d'utilisateur déjà pris")
     if role not in ("admin", "user"):
         role = "user"
-    new_user = UserInDB(
+    user = UserDB(
         id=str(int(datetime.utcnow().timestamp() * 1000)),
         username=key,
         password_hash=hash_password(password),
         role=role,
-        services=services,
+        services=json.dumps(services),
         active=True,
     )
-    _users[key] = new_user
-    _save_users(_users)
-    return to_public(new_user)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return to_public(user)
 
 
 def update_user(
+    db: Session,
     username: str,
     password: Optional[str],
     role: Optional[str],
@@ -138,7 +173,7 @@ def update_user(
     active: Optional[bool],
 ) -> UserPublic:
     key = username.strip().lower()
-    user = _users.get(key)
+    user = db.query(UserDB).filter_by(username=key).first()
     if not user:
         raise KeyError("Utilisateur introuvable")
     if password:
@@ -146,19 +181,20 @@ def update_user(
     if role and role in ("admin", "user"):
         user.role = role
     if services is not None:
-        user.services = services
+        user.services = json.dumps(services)
     if active is not None:
         user.active = active
-    _users[key] = user
-    _save_users(_users)
+    db.commit()
+    db.refresh(user)
     return to_public(user)
 
 
-def delete_user(username: str) -> None:
+def delete_user(db: Session, username: str) -> None:
     key = username.strip().lower()
     if key == "admin":
         raise ValueError("Impossible de supprimer le compte admin")
-    if key not in _users:
+    user = db.query(UserDB).filter_by(username=key).first()
+    if not user:
         raise KeyError("Utilisateur introuvable")
-    del _users[key]
-    _save_users(_users)
+    db.delete(user)
+    db.commit()

@@ -1,20 +1,29 @@
 /**
  * src/main.jsx
  *
- * DIFFÉRENCES v8 vs v6 :
- *  [1] CommentProvider ajouté autour de l'app
+ * MODIFICATIONS PAR RAPPORT À L'ORIGINAL :
+ *  - CommentProvider reçoit maintenant currentActivity en prop
+ *  - Pour cela, Root gère selectedGroup et le transmet au CommentProvider
+ *  - Le reste est inchangé
+ *
+ * NOTE : CommentProvider doit être à l'intérieur de AuthProvider
+ * pour pouvoir lire le token via useAuth().
  */
-import { StrictMode } from 'react';
+
+import { StrictMode, useState, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App';
 import Login from './components/Login';
 import { AuthProvider, useAuth } from './context/AuthContext';
-// [1] Nouveau import v8
 import { CommentProvider } from './context/CommentContext';
 
 function Root() {
   const { isLoading, isAuthenticated } = useAuth();
+
+  // MODIFIÉ : selectedGroup géré ici pour le passer au CommentProvider
+  const [currentActivity, setCurrentActivity] = useState('');
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100">
@@ -22,16 +31,21 @@ function Root() {
       </div>
     );
   }
-  return isAuthenticated ? <App /> : <Login />;
+
+  if (!isAuthenticated) return <Login />;
+
+  return (
+    // MODIFIÉ : currentActivity transmis au CommentProvider
+    <CommentProvider currentActivity={currentActivity}>
+      <App onActivityChange={setCurrentActivity} currentActivity={currentActivity} />
+    </CommentProvider>
+  );
 }
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    {/* [1] CommentProvider enveloppe toute l'app pour partager les commentaires */}
-    <CommentProvider>
-      <AuthProvider>
-        <Root />
-      </AuthProvider>
-    </CommentProvider>
+    <AuthProvider>
+      <Root />
+    </AuthProvider>
   </StrictMode>
 );

@@ -1,21 +1,25 @@
-import { useRef } from 'react';
+/**
+ * src/components/WeeklyCompletionModal.jsx
+ *
+ * MODIFICATIONS PAR RAPPORT À L'ORIGINAL :
+ *  - Suppression complète du localStorage ('fp_manual_values')
+ *  - loadManualValues() remplacée par un fetch GET /api/manual/{activity}
+ *  - handleSave() envoie POST /api/manual pour chaque champ modifié
+ *  - Les fonctions utilitaires weekTotal et weekAverage sont inchangées
+ *  - existing (valeurs pré-remplies) est chargé via useEffect au montage
+ *  - Un état local `apiValues` remplace allValues/existing du localStorage
+ *  - token transmis via useAuth()
+ */
+
+import { useRef, useState, useEffect } from 'react';
 import { X, Save, ClipboardCheck } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
-const STORAGE_KEY = 'fp_manual_values';
-const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-const N_DAYS = 7;
+const DAYS    = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+const N_DAYS  = 7;
 
-// Lecture / écriture localStorage
-export function loadManualValues() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
-  catch { return {}; }
-}
-function saveManualValues(data) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
+// ── Utilitaires exportés (inchangés — utilisés par DataTable.jsx) ─────────────
 
-// weekTotal : somme des jours renseignés
-// Exportée et utilisée par DataTable.jsx pour afficher le total hebdo dans le tableau.
 export function weekTotal(weekData, field) {
   const arr = weekData?.[field];
   if (!Array.isArray(arr)) return null;
@@ -27,7 +31,6 @@ export function weekTotal(weekData, field) {
   }, 0);
 }
 
-// weekAverage exportée — utilisée par DataTable pour la colonne Tot. des lignes manuelles
 export function weekAverage(arr) {
   if (!Array.isArray(arr)) return null;
   const filled = arr.filter(v => v !== null && v !== undefined && v !== '' && !isNaN(parseFloat(v)));
@@ -36,15 +39,65 @@ export function weekAverage(arr) {
   return sum / filled.length;
 }
 
-//  Composant
-// currentActivity ajouté en prop
+// ── NOUVEAU : chargement API au lieu de localStorage ──────────────────────────
+
+export function useManualValues(currentActivity, token) {
+  const [values, setValues]   = useState({});  // { "Sem-36": { abs_reel: [...], non_logue: [...] } }
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    if (!token || !currentActivity) { setValues({}); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/manual/${encodeURIComponent(currentActivity)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setValues(await res.json());
+    } catch (err) {
+      console.error('Erreur chargement saisies manuelles:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [currentActivity, token]);
+
+  return { values, reload: load, setValues };
+}
+
+// ── Fonction de sauvegarde API ─────────────────────────────────────────────────
+
+async function saveToApi(token, activity, week, field, values) {
+  const res = await fetch('/api/manual', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ activity, week, field, values }),
+  });
+  if (!res.ok) throw new Error(`Erreur HTTP ${res.status}`);
+}
+
+// ── COMPATIBILITÉ : loadManualValues() pour DataTable.jsx ─────────────────────
+// DataTable importe encore loadManualValues() de ce fichier.
+// Cette version retourne un objet vide — DataTable devra être mis à jour
+// pour utiliser les données chargées par le contexte ou passées en prop.
+// (Voir note de migration dans DataTable.jsx)
+export function loadManualValues() {
+  return {};
+}
+
+// ── Composant principal ────────────────────────────────────────────────────────
+
 export default function WeeklyCompletionModal({ dark, sortedWeeks, onClose, currentActivity = '' }) {
+  const { token } = useAuth();
   const refs      = useRef({});
   const saved_ref = useRef(null);
 
-  // Lire uniquement les valeurs de l'activité courante
-  const allValues = loadManualValues();
-  const existing  = allValues[currentActivity] || {};
+  // MODIFIÉ : chargement depuis l'API
+  const { values: apiValues, reload } = useManualValues(currentActivity, token);
+  const existing = apiValues;
 
   sortedWeeks.forEach(w => {
     if (!refs.current[w]) refs.current[w] = { abs_reel: [], non_logue: [] };
@@ -59,44 +112,53 @@ export default function WeeklyCompletionModal({ dark, sortedWeeks, onClose, curr
       ? 'bg-[#21262d] border-[#30363d] text-slate-200 placeholder-slate-600 focus:border-[#00afa9]'
       : 'bg-white border-slate-300 text-slate-800 placeholder-slate-300 focus:border-[#00afa9]'}`;
 
-  // Lit les refs et sauvegarde sous la clé de l'activité courante
-  const handleSave = () => {
-    const weekData = {};
-    sortedWeeks.forEach(w => {
-      weekData[w] = { abs_reel: [], non_logue: [] };
-      ['abs_reel', 'non_logue'].forEach(field => {
-        for (let i = 0; i < N_DAYS; i++) {
-          const el = refs.current[w]?.[field]?.[i];
-          const raw = el?.value ?? '';
-          const n = parseFloat(raw);
-          weekData[w][field].push(isNaN(n) ? null : n);
-        }
+  // MODIFIÉ : sauvegarde via API pour chaque semaine et chaque champ
+  const handleSave = async () => {
+    if (!currentActivity) return;
+
+    try {
+      const promises = [];
+
+      sortedWeeks.forEach(w => {
+        ['abs_reel', 'non_logue'].forEach(field => {
+          const values = [];
+          for (let i = 0; i < N_DAYS; i++) {
+            const el  = refs.current[w]?.[field]?.[i];
+            const raw = el?.value ?? '';
+            const n   = parseFloat(raw);
+            values.push(isNaN(n) ? null : n);
+          }
+          promises.push(saveToApi(token, currentActivity, w, field, values));
+        });
       });
-    });
 
-    // Merge avec les autres activités — ne pas les écraser
-    const updated = { ...allValues, [currentActivity]: weekData };
-    saveManualValues(updated);
+      await Promise.all(promises);
 
-    if (saved_ref.current) {
-      saved_ref.current.textContent = '✓ Sauvegardé';
-      saved_ref.current.classList.add('bg-green-500');
-      saved_ref.current.classList.remove('bg-[#00afa9]');
-      setTimeout(() => {
-        if (saved_ref.current) {
-          saved_ref.current.textContent = 'Sauvegarder';
-          saved_ref.current.classList.remove('bg-green-500');
-          saved_ref.current.classList.add('bg-[#00afa9]');
-        }
-        onClose();
-      }, 700);
+      // Feedback visuel
+      if (saved_ref.current) {
+        saved_ref.current.textContent = '✓ Sauvegardé';
+        saved_ref.current.classList.add('bg-green-500');
+        saved_ref.current.classList.remove('bg-[#00afa9]');
+        setTimeout(() => {
+          if (saved_ref.current) {
+            saved_ref.current.textContent = 'Sauvegarder';
+            saved_ref.current.classList.remove('bg-green-500');
+            saved_ref.current.classList.add('bg-[#00afa9]');
+          }
+          reload();   // Recharger depuis l'API après sauvegarde
+          onClose();
+        }, 700);
+      }
+    } catch (err) {
+      console.error('Erreur sauvegarde:', err);
+      alert('Erreur lors de la sauvegarde. Veuillez réessayer.');
     }
   };
 
-  // Rendu d'une ligne (abs_reel ou non_logue)
+  // Rendu d'une ligne (inchangé visuellement)
   const renderRow = (label, field, weekSaved) => {
     const arr = weekSaved[field] || [];
-    const avg = weekAverage(arr); // [v12-2]
+    const avg = weekAverage(arr);
     return (
       <tr>
         <td className={`pr-3 py-1.5 font-medium ${dark ? 'text-slate-300' : 'text-slate-600'}`}>
@@ -121,7 +183,6 @@ export default function WeeklyCompletionModal({ dark, sortedWeeks, onClose, curr
             </td>
           );
         })}
-        {/* [v12-2] Colonne Moy. — moyenne des jours renseignés */}
         <td className="px-2 py-1 text-center font-bold text-[#00afa9] text-[11px]">
           {avg !== null ? avg.toFixed(2) : '—'}
         </td>
@@ -133,14 +194,13 @@ export default function WeeklyCompletionModal({ dark, sortedWeeks, onClose, curr
     <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4">
       <div className={`${bg} w-full max-w-4xl rounded-xl shadow-2xl flex flex-col max-h-[90vh]`}>
 
-        {/* Header ────────────────────────────────────────────────────────── */}
+        {/* Header */}
         <div className={`flex items-center justify-between px-6 py-4 border-b flex-shrink-0 ${dark ? 'border-[#30363d]' : 'border-slate-200'}`}>
           <div className="flex items-center gap-2">
             <ClipboardCheck size={20} className="text-[#00afa9]" />
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-bold text-sm">Complétion hebdomadaire</span>
-                {/* [v12-1] Badge activité courante bien visible */}
                 {currentActivity ? (
                   <span className="text-[12px] bg-[#00afa9] text-white px-2.5 py-0.5 rounded-full font-semibold">
                     {currentActivity}
@@ -178,12 +238,10 @@ export default function WeeklyCompletionModal({ dark, sortedWeeks, onClose, curr
           )}
 
           {sortedWeeks.map(week => {
-            const saved = { ...existing[week] || {}, __week: week };
+            const saved = { ...(existing[week] || {}), __week: week };
             return (
               <div key={week} className={`border rounded-xl p-4 ${card}`}>
-                {/* Titre semaine */}
                 <h3 className="text-sm font-bold text-[#00afa9] mb-3">{week}</h3>
-
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse text-[11px]">
                     <thead>
@@ -192,7 +250,6 @@ export default function WeeklyCompletionModal({ dark, sortedWeeks, onClose, curr
                         {DAYS.map(d => (
                           <th key={d} className={`text-center px-1 py-1 font-semibold ${hdr} min-w-[52px]`}>{d}</th>
                         ))}
-                        {/* [v12-2] En-tête renommé Moy. */}
                         <th className="text-center px-2 py-1 font-semibold text-[#00afa9] min-w-[56px]">Moy.</th>
                       </tr>
                     </thead>
@@ -213,8 +270,7 @@ export default function WeeklyCompletionModal({ dark, sortedWeeks, onClose, curr
         {/* Footer */}
         <div className={`px-6 py-4 border-t flex items-center justify-between flex-shrink-0 ${dark ? 'border-[#30363d]' : 'border-slate-200'}`}>
           <p className={`text-[11px] ${dark ? 'text-slate-600' : 'text-slate-400'}`}>
-            {/* Rappel de l'activité dans le footer */}
-            Valeurs propres à l'activité <span className="font-semibold text-[#00afa9]">{currentActivity || '—'}</span> ·
+            Valeurs propres à l'activité <span className="font-semibold text-[#00afa9]">{currentActivity || '—'}</span>
           </p>
           <button
             ref={saved_ref}
